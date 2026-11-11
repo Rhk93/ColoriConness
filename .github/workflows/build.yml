@@ -1,0 +1,56 @@
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Controlla kit Android
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME" || echo "::error::Kit Android non trovato su questo computer di GitHub"
+
+      - name: Compila APK
+        run: |
+          set -o pipefail
+          gradle assembleDebug --no-daemon 2>&1 | tee build.log
+
+      - name: Mostra errore in breve
+        if: failure()
+        run: |
+          if [ -f build.log ]; then
+            grep -E "^e: " build.log | head -15 | while IFS= read -r l; do echo "::error::$l"; done
+            msg=$(grep -A 12 "What went wrong" build.log | grep -v "^\* Try" | tr '\n' ' ' | cut -c1-900)
+            [ -n "$msg" ] && echo "::error::$msg"
+          fi
+
+      - name: Rinomina APK
+        run: cp build/outputs/apk/debug/*.apk PS5-FTP-Manager.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PS5-FTP-Manager
+          path: PS5-FTP-Manager.apk
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: PS5 FTP Manager (build ${{ github.run_number }})
+          files: PS5-FTP-Manager.apk
